@@ -782,8 +782,7 @@ namespace FutuScanner
             }
             catch (Exception e)
             {
-
-                throw e;
+                GlobalExceptionHandler.HandleException(this, e, null);
             }
             
         }

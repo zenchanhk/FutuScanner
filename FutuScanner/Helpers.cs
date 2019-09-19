@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -9,9 +10,107 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace FutuScanner
 {
+    public class GlobalExceptionHandler
+    {
+        private static string working_dir = System.IO.Directory.GetCurrentDirectory();
+        private static string log_dir = working_dir + Path.DirectorySeparatorChar + "omlog" + Path.DirectorySeparatorChar;
+        public static void HandleException(object sender, Exception ex, EventArgs args = null, string message = null, bool slient = false)
+        {
+            if (!slient)
+                MessageBox.Show((message == null ? ex.Message : message)
+                    + "\nSource: " + ex.Source
+                    + "\nSender: " + (sender != null ? sender.ToString() : "")
+                    + "\nPlease see the log for details (located at "
+                    + working_dir + ")",
+                    "Fatal error", MessageBoxButton.OK, MessageBoxImage.Error);
+            //YTrace.Trace(message, YTrace.TraceLevel.Information);
+            StringBuilder sb = new StringBuilder();
+
+            if (args != null)
+            {
+                if (args.GetType() == typeof(UnobservedTaskExceptionEventArgs))
+                {
+                    sb.AppendLine("UnobservedTaskException: " + ex.GetType().Name);
+                    //((UnobservedTaskExceptionEventArgs)args).SetObserved();
+                }
+                if (args.GetType() == typeof(DispatcherUnhandledExceptionEventArgs))
+                {
+                    sb.AppendLine("DispatcherUnhandledException: " + ex.GetType().Name);
+                    //((DispatcherUnhandledExceptionEventArgs)args).Handled = true;
+                }
+                if (args.GetType() == typeof(UnhandledExceptionEventArgs))
+                {
+                    sb.AppendLine("Uncaptured exception for current domain: " + ex.GetType().Name);
+                }
+            }
+            else
+            {
+                sb.AppendLine("No exception event args");
+            }
+
+
+            sb.AppendLine("Sender:" + sender.ToString());
+            if (ex != null)
+            {
+                sb.AppendLine("Exception Message: " + ex.Message);
+                if (ex.Source != null) sb.AppendLine("Source: " + ex.Source);
+                if (ex.StackTrace != null) sb.AppendLine("StackTrace: " + ex.StackTrace);
+                if (ex.InnerException != null)
+                {
+                    sb.AppendLine("InnerException Message: " + ex.InnerException.Message);
+                    if (ex.InnerException.Source != null) sb.AppendLine("InnerException Source: " + ex.InnerException.Source);
+                    if (ex.InnerException.StackTrace != null) sb.AppendLine("InnerException StackTrace: " + ex.InnerException.StackTrace);
+                }
+                // for task AggregateException
+                if (ex.GetType() == typeof(AggregateException))
+                {
+                    foreach (var inner in ((AggregateException)ex).InnerExceptions)
+                    {
+                        sb.AppendLine("InnerException Message: " + inner.Message);
+                        if (inner.Source != null) sb.AppendLine("InnerException Source: " + inner.Source);
+                        if (inner.StackTrace != null) sb.AppendLine("InnerException StackTrace: " + inner.StackTrace);
+                    }
+                }
+            }
+            Log(sb.ToString());
+
+        }
+
+        public static void LogMessage(string ticker, string message)
+        {
+            // place your logging code here
+            try
+            {
+                string file_path = ticker + ".log";
+                StreamWriter sw = new StreamWriter(file_path, true);
+                sw.WriteLine(DateTime.Now.ToShortDateString() + " " + DateTime.Now.ToShortTimeString() + ":" + message);
+                sw.Close();
+            }
+            catch (Exception ex)
+            {
+                
+            }
+        }
+        public static void Log(string lines)
+        {
+            try
+            {
+                //string file_path = "\"" + string.Format("{0}error{1:yyyyMMdd}.log\"", log_dir, DateTime.Now);
+                string file_path = string.Format("error{0:yyyyMMdd}.log", DateTime.Now);
+                StreamWriter sw = new StreamWriter(file_path, true);
+                sw.WriteLine(DateTime.Now.ToShortTimeString() + ":" + lines);
+                sw.Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Failed to log message." + "\nException:" + ex.Message, "Log Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
     public static class DependencyObjectExtensions
     {
         public static T GetVisualParent<T>(this DependencyObject child) where T : Visual
