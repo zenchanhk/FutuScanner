@@ -4,13 +4,16 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:FutuScanner"
+        xmlns:controls="clr-namespace:FutuScanner.UI.Controls"
         mc:Ignorable="d"
         Icon="images/file.png"
         Title="Stock Scanner" Height="450" Width="800">
     <Window.Resources>
-        <local:IntToBrushConverter x:Key="IntToBrushConverter"/>
-        <local:ConvertItemToIndex x:Key="IndexConverter"/>
-        <local:Clocking x:Key="ticker"/>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="UI/Resource.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
     </Window.Resources>
     <Grid Margin="5, 0, 0, 0">
         <Grid.LayoutTransform>
@@ -34,15 +37,16 @@
             <CheckBox Margin="0,0,5,0" Content="Header" IsChecked="{Binding header}" VerticalAlignment="Center" />
             <Button  Margin="0,0,5,0" Width="50" Content="Open" Click="OpenList" />
             <Button Margin="0,0,5,0" Width="50" Content="Save" Click="SaveList" />
-            <!--Button Margin="0,0,5,0" Width="50" Content="Init" Click="Init" /-->
+            <Button Margin="0,0,5,0" Width="50" Content="Clear" Click="Clear" />
             <Button Margin="0,0,5,0" Width="50" Content="Scan" Click="Scan" />
+            <Button Margin="0,0,5,0" Width="50" Content="Setting" Click="Setting" />
         </StackPanel>
         <StackPanel Margin="0,5,0,5" Orientation="Horizontal" Grid.Column="0" Grid.Row="1">
-            <ComboBox ItemsSource="{Binding SymbolSearchResult}"
+            <!--ComboBox ItemsSource="{Binding SymbolSearchResult}"
                       SelectedItem="{Binding SelectedSymbol}"
                       LostFocus="ComboBox_LostFocus"
-                      KeyUp="Cb_OnKeyUp"        
-                      IsTextSearchEnabled="False"
+                      Text="{Binding CodeFilter, UpdateSourceTrigger=PropertyChanged}"        
+                      StaysOpenOnEdit="True"                      
                       IsEditable="True" Width="150">
                 <ComboBox.ItemsPanel>
                     <ItemsPanelTemplate>
@@ -57,7 +61,29 @@
                         </StackPanel>
                     </DataTemplate>
                 </ComboBox.ItemTemplate>
-            </ComboBox>
+            </ComboBox-->
+            <controls:FilteredComboBox ItemsSource="{Binding AllSymbols}"
+                    SelectedItem="{Binding SelectedSymbol}"
+                    Width="150"
+                    SearchFields="Code:Name:PinYin"
+                    IsEditable="True" 
+                    IsTextSearchEnabled="False" 
+                    StaysOpenOnEdit="True">
+
+                <controls:FilteredComboBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel VirtualizationMode="Recycling" />
+                    </ItemsPanelTemplate>
+                </controls:FilteredComboBox.ItemsPanel>
+                <controls:FilteredComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel>
+                            <TextBlock Text="{Binding Code}" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding Name}"/>
+                        </StackPanel>
+                    </DataTemplate>
+                </controls:FilteredComboBox.ItemTemplate>
+            </controls:FilteredComboBox>
 
             <Button Margin="5, 0, 0, 0" Width="20" Content="+" Click="OnAddSymbol"/>
             <Button Margin="5, 0, 0, 0" Width="20" Content="-" Click="OnDeleteSymbol"/>
@@ -86,6 +112,7 @@
                 <DataGridTextColumn Binding="{Binding Name}" Header="Symbol" IsReadOnly="True"/>
                 <DataGridTextColumn Binding="{Binding Last}" Header="Close" IsReadOnly="True"/>
                 <DataGridTextColumn Binding="{Binding Volume}" Header="Volume" IsReadOnly="True"/>
+                <DataGridTextColumn Binding="{Binding Time, StringFormat=\{0:HH:mm:ss\}}" Header="BarTime" IsReadOnly="True"/>
                 <DataGridTextColumn Binding="{Binding LastUpdTs, StringFormat=\{0:HH:mm:ss\}}" Header="Update TS" IsReadOnly="True"/>
                 <DataGridTextColumn Binding="{Binding LastDayHigh}" Header="Last DayHigh" IsReadOnly="True"/>
                 <DataGridTextColumn Binding="{Binding LastClose}" Header="Last Close" IsReadOnly="True"/>
@@ -115,17 +142,55 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Binding="{Binding Code}" Header="Code"/>
                 <DataGridTextColumn Binding="{Binding Name}" Header="Symbol"/>
-                <DataGridTextColumn Binding="{Binding Time, StringFormat=\{0:HH:mm:ss\}}" Header="Time"/>
+                <DataGridTextColumn Binding="{Binding BarTime, StringFormat=\{0:HH:mm:ss\}}" Header="Bar Time"/>
                 <DataGridTextColumn Binding="{Binding Last}" Header="Close"/>
                 <DataGridTextColumn Binding="{Binding Volume}" Header="Volume"/>
                 <DataGridTextColumn Binding="{Binding Remark}" Header="Remark"/>
+                <DataGridTextColumn Binding="{Binding PeekTime, StringFormat=\{0:HH:mm:ss\}}" Header="Peek Time"/>
             </DataGrid.Columns>
         </DataGrid>
         <StatusBar Grid.Column="0" Grid.Row="3" Grid.ColumnSpan="2">
             <StatusBarItem>
                 <TextBlock Name="lblCursorPosition" Text="{Binding StatusMessage}"/>
             </StatusBarItem>
-            <StatusBarItem HorizontalAlignment="Right" Content="{Binding Source={StaticResource ticker},Path=Now,Mode=OneWay}"/>
+            <Separator/>
+            <StatusBarItem HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal">
+                    <ItemsControl ItemsSource="{Binding Controllers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderThickness="1" BorderBrush="Blue" Margin="1" CornerRadius="2">
+                                    <TextBlock Background="{Binding Path=ConnectionStatus, Converter={StaticResource StatusToBrushConverter} }"
+                                               Text="{Binding DisplayName}" Padding="2" >
+                                        <TextBlock.ToolTip>
+                                            <TextBlock Text="{Binding Path=ConnectionStatus, Converter={StaticResource StatusToTooltipConverter}}" />
+                                        </TextBlock.ToolTip>
+                                                <TextBlock.ContextMenu>
+                                                    <ContextMenu>
+                                                        <MenuItem Name="mi_connect" Header="{Binding Path=ConnectionStatus, Converter={StaticResource StatusToIconTextConverter} }"
+                                                                  Click="Mi_Connect_Click">
+                                                            <MenuItem.Icon>
+                                                                <Image Source="{Binding Path=ConnectionStatus, Converter={StaticResource StatusToIconImageConverter}}"/>
+                                                            </MenuItem.Icon>
+                                                        </MenuItem>                                                                  
+                                                    </ContextMenu>
+                                                </TextBlock.ContextMenu>
+                                            </TextBlock>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <Separator/>
+
+                    <StatusBarItem HorizontalAlignment="Right" Content="{Binding Source={StaticResource ticker},Path=Now,Mode=OneWay}"/>
+                </StackPanel>
+            </StatusBarItem>
         </StatusBar>
 
         <GridSplitter Grid.Row="0" Grid.Column="0" Grid.RowSpan="3" Background="LightGray" HorizontalAlignment="Right"   VerticalAlignment="Stretch" Width="5"  />

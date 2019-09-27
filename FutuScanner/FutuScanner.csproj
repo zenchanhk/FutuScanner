@@ -39,15 +39,27 @@
     <ApplicationIcon>file_GDc_icon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="FontAwesome.Sharp, Version=5.2.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>bin\Debug\FontAwesome.Sharp.dll</HintPath>
+    </Reference>
     <Reference Include="Google.ProtocolBuffers">
       <HintPath>..\..\..\FTAPI-3.11.2\FTAPI4Net\FTWrapper\packages\Google.ProtocolBuffers.dll</HintPath>
     </Reference>
     <Reference Include="Google.ProtocolBuffers.Serialization">
       <HintPath>..\..\..\FTAPI-3.11.2\FTAPI4Net\FTWrapper\packages\Google.ProtocolBuffers.Serialization.dll</HintPath>
     </Reference>
+    <Reference Include="GrayscaleEffect, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>bin\Debug\GrayscaleEffect.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.12.0.2\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml" />
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Core" />
@@ -66,6 +78,19 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="Controllers\FTController.cs" />
+    <Compile Include="Controllers\IController.cs" />
+    <Compile Include="UI\Controls\AutoGreyImage.cs" />
+    <Compile Include="UI\Controls\DateTimeEditor.cs" />
+    <Compile Include="UI\Controls\FilteredComboBox.cs" />
+    <Compile Include="UI\Controls\NumericUpDown.cs" />
+    <Compile Include="UI\Dialogs\AccountConfig.xaml.cs">
+      <DependentUpon>AccountConfig.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="UI\Dialogs\Setting.xaml.cs">
+      <DependentUpon>Setting.xaml</DependentUpon>
+    </Compile>
+    <Compile Include="UI\MaterialIcons.cs" />
     <Compile Include="VM.cs" />
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
@@ -82,6 +107,18 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="UI\Dialogs\AccountConfig.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="UI\Dialogs\Setting.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+    <Page Include="UI\Resource.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="PinYin.cs" />
@@ -102,10 +139,12 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
+    <None Include="packages.config" />
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
+    <Resource Include="UI\fonts\materialdesignicons-webfont.ttf" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
@@ -131,6 +170,9 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="images\file.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="images\setting.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

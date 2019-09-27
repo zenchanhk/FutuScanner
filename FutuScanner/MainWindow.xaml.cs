@@ -13,11 +13,6 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-
 namespace FutuScanner
 {
     /// <summary>
@@ -68,17 +63,43 @@ namespace FutuScanner
             if (saveFileDialog.ShowDialog() == true)
                 vm.saveOutput(saveFileDialog.FileName);
         }
-        private void Init(object sender, RoutedEventArgs e)
+        private void Setting(object sender, RoutedEventArgs e)
         {
-            vm.Init();
+            Setting setting = new Setting();
+            bool? dr = setting.ShowDialog();
+            if ((bool)dr)
+                vm.ReadSettings();
         }
         private void Scan(object sender, RoutedEventArgs e)
         {
             vm.Scan();
         }
+        private void RequestAllSymbols(object sender, RoutedEventArgs e)
+        {
+            vm.Request_all_symbols();
+        }
+        private void Clear(object sender, RoutedEventArgs e)
+        {
+            MessageBoxResult result = MessageBox.Show("Are you sure to clear all symbols?",
+                    "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (result == MessageBoxResult.Yes)
+            {
+                vm.ClearList();
+            }
+        }
         public void OnAddSymbol(object sender, RoutedEventArgs e)
         {
-            vm.List.Insert(0, new Quote() { Code = vm.SelectedSymbol.Code, Name = vm.SelectedSymbol.Name, Security = vm.SelectedSymbol.Security });
+            vm.AddSymbol();
+        }
+
+        private void Mi_Connect_Click(object sender, RoutedEventArgs e)
+        {
+            MenuItem mi = sender as MenuItem;
+            IController ctrl = mi.DataContext as IController;
+            if (ctrl.IsConnected)
+                ctrl.Disconnect();
+            else
+                ctrl.Connect();
         }
 
         public void OnDeleteSymbol(object sender, RoutedEventArgs e)
@@ -86,52 +107,6 @@ namespace FutuScanner
             //vm.List.Remove(x => x.Checked);
             DataGrid gc = (DataGrid)this.FindName("watchListGrid");
             vm.List.Remove(x => gc.SelectedItems.Contains(x));
-        }
-
-        private void Cb_OnKeyUp(object sender, KeyEventArgs e)
-        {
-            ComboBox cb = (ComboBox)sender;
-            //TextBox cb = (TextBox) sender;
-            /*
-            if ((e.Key >= Key.A && e.Key <= Key.Z)
-                || (e.Key >= Key.D0 && e.Key <= Key.D9)
-                || (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9))
-            {
-                string key = KeyEventUtility.GetCharFromKey(e.Key).ToString().Trim();
-                if (!string.IsNullOrEmpty(key) && string.IsNullOrEmpty(cb.Text))
-                    cb.Text = key;
-            }*/
-
-            if ((e.Key >= Key.A && e.Key <= Key.Z)
-                || (e.Key >= Key.D0 && e.Key <= Key.D9)
-                || (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9)
-                || e.Key == Key.Decimal
-                || e.Key == Key.Delete || e.Key == Key.Back)
-            {
-                vm.SelectedSymbol = null;
-                
-                //string ss = cb.Text + key.Substring(key.Length - 1);
-                if (cb.Text != String.Empty)
-                {
-                    vm.LookupSymbols(cb.Text);
-                    //if (!cb.IsDropDownOpen && cb.Text.Length > 0)
-                    //    cb.IsDropDownOpen = true;
-                    if (!cb.IsDropDownOpen && cb.Text.Length > 0)
-                        cb.IsDropDownOpen = true;
-                }
-            }
-
-            if ((e.Key >= Key.A && e.Key <= Key.Z)
-                || (e.Key >= Key.D0 && e.Key <= Key.D9)
-                || (e.Key >= Key.NumPad0 && e.Key <= Key.NumPad9))
-            {
-                var textBox = (cb.Template.FindName("PART_EditableTextBox", cb) as TextBox);
-                if (textBox != null && textBox.Text.Length > 0)
-                {
-                    textBox.SelectionStart = textBox.Text.Length;
-                    textBox.SelectionLength = 0;
-                }
-            }
         }
 
         protected override void OnPreviewMouseWheel(MouseWheelEventArgs args)

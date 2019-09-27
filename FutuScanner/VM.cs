@@ -13,9 +13,11 @@ using System.Threading.Tasks;
 using System.Windows;
 using FTWrapper;
 using Futu.OpenApi.Pb;
+using Newtonsoft.Json;
 
 namespace FutuScanner
-{
+{    
+
     public class Symbol : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
@@ -92,7 +94,8 @@ namespace FutuScanner
         public string Name { get; set; }
         public double Last { get; set; }
         public double Volume { get; set; }
-        public DateTime Time { get; set; }
+        public DateTime PeekTime { get; set; }
+        public DateTime BarTime { get; set; }
         public String Remark { get; set; }
 
     }
@@ -319,13 +322,13 @@ namespace FutuScanner
     public class VM : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler PropertyChanged;
-
-        private FTClient client = new FTClient("127.0.0.1", 11111);
+        
+        public UserPreference UserPreference { get; private set; }
         public ObservableCollection<Quote> List { get; set; }
         public ObservableCollection<OutStanding> FilteredResult { get; set; }
         //public HashSet<Symbol> AllSymbols { get; set; }
 
-        private HashSet<Symbol> _AllSymbols;
+        private HashSet<Symbol> _AllSymbols = new HashSet<Symbol>();
         public HashSet<Symbol> AllSymbols
         {
             get { return _AllSymbols; }
@@ -351,6 +354,23 @@ namespace FutuScanner
                 }
             }
         }
+
+        private string _pCodeFilter;
+        public string CodeFilter
+        {
+            get { return _pCodeFilter; }
+            set
+            {
+                if (_pCodeFilter != value)
+                {
+                    _pCodeFilter = value;
+                    LookupSymbols(value);
+                    OnPropertyChanged("CodeFilter");
+                    OnPropertyChanged("SymbolSearchResult");
+                }
+            }
+        }
+
         //check if watch list has a header 
         private bool _header;
         public bool header
@@ -394,6 +414,22 @@ namespace FutuScanner
             }
         }
 
+        private string _pStatusMessage = "Ready";
+        public string StatusMessage
+        {
+            get { return _pStatusMessage; }
+            set
+            {
+                if (_pStatusMessage != value)
+                {
+                    _pStatusMessage = value;
+                    OnPropertyChanged("StatusMessage");
+                }
+            }
+        }
+
+        private bool isScanning = false;
+        public ObservableCollection<IController> Controllers { get; private set; } = new ObservableCollection<IController>();
 
         private readonly string[] markets = { "HK", "US" };//, "SH", "SZ", "HK_FUTURE"};
         private readonly string[] stock_types = { "STOCK", "ETF" };//, "IDX", "ETF", "WARRANT", "BOND", "DRVT"};
@@ -408,7 +444,8 @@ namespace FutuScanner
             //Selected.Add(new Quote() { Code = "cd1", Time = DateTime.Now });
             List.CollectionChanged += List_CollectionChanged;
             //initialization
-            Init();
+            //Init();
+            ReadSettings();
         }
 
         private void List_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -452,16 +489,31 @@ namespace FutuScanner
             SymbolSearchResult = new List<Symbol>(result);
         }
 
-        private List<Security> plates = new List<Security> { new Security { Market = Futu.OpenApi.Pb.QotCommon.QotMarket.QotMarket_HK_Security, Code = "BK1910" } };
+        private List<Security> plates = new List<Security>
+        { new Security { Market = Futu.OpenApi.Pb.QotCommon.QotMarket.QotMarket_HK_Security, Code = "BK1910" },
+            new Security {Market = Futu.OpenApi.Pb.QotCommon.QotMarket.QotMarket_CNSH_Security, Code = "3000002"},
+            new Security {Market = Futu.OpenApi.Pb.QotCommon.QotMarket.QotMarket_CNSZ_Security, Code = "3000004"}
+        };
+        private bool isRequestedSymbols = false;
         public async Task<bool> Request_all_symbols()
         {
             try
             {
+                if (isRequestedSymbols) return true;
+                                
+                FTClient client = null;
+                foreach (var ctrl in Controllers)
+                {
+                    if (ctrl.ConnectionStatus.IsQotConnected)
+                        client = ((FTController)ctrl).Client;
+                }
+                if (client == null) return false;
                 foreach (var plate in plates)
                 {
                     List<Contract> contracts = await client.RequestSymbols(plate);
                     FillInSymbols(contracts);                    
                 }
+                isRequestedSymbols = true;
                 return true;
             }
             catch (Exception e)
@@ -471,12 +523,33 @@ namespace FutuScanner
                         
         }
 
+        public async Task<bool> Request_all_symbols(FTClient client)
+        {
+            try
+            {
+                if (isRequestedSymbols) return true;
+                if (client == null) return false;
+                isRequestedSymbols = true;
+                foreach (var plate in plates)
+                {
+                    List<Contract> contracts = await client.RequestSymbols(plate);
+                    FillInSymbols(contracts);
+                }                
+                return true;
+            }
+            catch (Exception e)
+            {
+                return false;
+            }
+
+        }
+
         private void FillInSymbols(List<Contract> contracts)
         {
-            HashSet<Symbol> tmp = new HashSet<Symbol>();
+            
             foreach (var contract in contracts)
             {
-                tmp.Add(new Symbol()
+                AllSymbols.Add(new Symbol()
                 {
                     Security = contract.Security,
                     Code = contract.Security.Code,
@@ -485,24 +558,6 @@ namespace FutuScanner
                 });
             }
 
-            AllSymbols = tmp;
-        }
-
-        public async void Init()
-        {
-            try
-            {
-                await client.ConnectAsync();
-                await Request_all_symbols();
-                client.QotCallback.RequestHistoryKL += QotCallback_RequestHistoryKL;
-                client.QotCallback.UpdateTicker += QotCallback_UpdateTicker;
-                client.QotCallback.UpdateKL += QotCallback_UpdateKL;
-                client.QotCallback.Subscription += QotCallback_Subscription;
-            }
-            catch (Exception e)
-            {
-                throw e;    
-            }            
         }
 
         private void QotCallback_UpdateKL(object sender, FTWrapper.Events.UpdateKLEventArgs e)
@@ -535,18 +590,30 @@ namespace FutuScanner
 
                             bool cb = false; //close break
                             bool vb = false; // volume break
-
+                            bool co = false; // close > open
 
                             int barNum = 5;
                             if (bar != null && bars.Count == barNum)
                             {
-                                if (quote.Last >= GetHighest(bars.Select(x => x.High).ToList().GetRange(0, barNum - 2)))
+                                if (quote.Last > GetHighest(bars.Select(x => x.High).ToList().GetRange(0, barNum - 1)))
                                     cb = true;
-                                if (bar.Volume >= GetHighest(bars.Select(x => x.Volume).ToList().GetRange(0, barNum - 2)))
+                                if (bar.Volume > GetHighest(bars.Select(x => x.Volume).ToList().GetRange(0, barNum - 1)))
                                     vb = true;
+                                var last_bar = bars.LastOrDefault();
+                                if (last_bar.Open < last_bar.Close)
+                                    co = true;
                             }
 
-                            if (cb && vb)
+                            bool cond1 = false;
+                            bool cond2 = false;
+                            bool cond3 = false;
+
+                            if (cb && vb && co) cond1 = true;
+                            if (quote.Last > quote.LastDayHigh && quote.LastDayHigh > 0) cond2 = true;
+                            if (quote.Last > quote.DayHigh && quote.DayHigh > 0 &&
+                                quote.Time >= quote.Time.Date.Add(new TimeSpan(9, 45, 0))) cond3 = true;
+                            
+                            if (cond1 || cond2 || cond3)
                             {
                                 Application.Current.Dispatcher.Invoke(() =>
                                 {
@@ -555,11 +622,15 @@ namespace FutuScanner
                                     tmp.Name = quote.Name;
                                     tmp.Last = quote.Last;
                                     tmp.Volume = quote.Volume;
-                                    tmp.Time = DateTime.Now;
-                                    if (quote.Last > quote.LastDayHigh && quote.LastDayHigh > 0)
-                                        tmp.Remark = "Break last dayhigh;";
-                                    if (quote.Last > quote.DayHigh && quote.DayHigh > 0)
-                                        tmp.Remark = "Break dayhigh;";
+                                    tmp.PeekTime = DateTime.Now;
+                                    tmp.BarTime = quote.Time;
+
+                                    if (cond1)
+                                        tmp.Remark = "C&V break And C>O;";
+                                    if (cond2)
+                                        tmp.Remark += "Break dayhigh;";
+                                    if (cond3)
+                                        tmp.Remark += "Break last dayhigh;";
 
                                     if (FilteredResult.Count > 0 &&
                                     tmp.Code == FilteredResult[0].Code &&
@@ -735,49 +806,103 @@ namespace FutuScanner
             }
         }
 
-        
+        private Dictionary<IController, HistoryKLQuota> HistoryQuota = new Dictionary<IController, HistoryKLQuota>();
+        private async Task<bool> GetQuota()
+        {
+            HistoryKLQuota quota = null;
+            foreach (var ctrl in Controllers)
+            {
+                if (ctrl.ConnectionStatus.IsQotConnected)
+                {
+                    quota = await ((FTController)ctrl).Client.RequestHistoryKLQuota<HistoryKLQuota>();
+                    if (HistoryQuota.ContainsKey(ctrl))
+                        HistoryQuota[ctrl] = quota;
+                    else
+                        HistoryQuota.Add(ctrl, quota);
+                }
+            }
+            return true;
+        }
+
+        private async Task<bool> Scan(Quote item)
+        {
+            try
+            {
+                if (item.LastDate < DateTime.Now.AddDays(-10) || item.IsDirty)
+                {
+
+                    ObservableCollection<OHLCBar> bars = KLines[item.Security];
+                    FTClient client = null;
+                    // search in the quota
+                    foreach (var quota in HistoryQuota)
+                    {
+                        var tmp = quota.Value.DetailItems.FirstOrDefault(x => x.Security == item.Security);
+                        if (tmp != null)
+                        {
+                            client = ((FTController)quota.Key).Client;
+                            break;
+                        }
+                    }
+                    if (client == null)
+                    {
+                        foreach (var quota in HistoryQuota)
+                        {
+                            if (quota.Value.RemainQuota > 0)
+                                client = ((FTController)quota.Key).Client;
+                        }
+                    }
+                    if (client == null)
+                    {
+                        throw new OutOfQuotaException();
+                    }
+                    // request history data                        
+                    client.RequestHistoryData(item.Security, DateTime.Now.AddDays(-5), DateTime.Now, QotCommon.KLType.KLType_Day);
+                    // request latest KLines
+                    List<QotCommon.KLine> kLines = await client.GetKL(item.Security, FTUtil.IntToKLType(Interval));
+                    var quote = List.FirstOrDefault(x => item.Security == x.Security);
+                    foreach (var line in kLines)
+                    {
+                        DateTime time = DateTime.ParseExact(line.Time, dtFormat, CultureInfo.InvariantCulture);
+                        if (time > GetBarTime(DateTime.Now))
+                            break;
+
+                        if (time.Date == DateTime.Now.Date)
+                        {
+                            bars.Add(new OHLCBar
+                            {
+                                Security = item.Security,
+                                Open = line.OpenPrice,
+                                High = line.HighPrice,
+                                Low = line.LowPrice,
+                                Close = line.ClosePrice,
+                                Volume = line.Volume,
+                                Time = GetBarTime(time)
+                            });
+                            if (quote.DayHigh < line.HighPrice)
+                                quote.DayHigh = line.HighPrice;
+                        }
+
+                    }
+                    //client.RequestMarketData(item.Security, FTUtil.IntToSubType(Interval));
+                    //client.RequestMarketData(item.Security, QotCommon.SubType.SubType_Ticker);
+                }
+                return true;
+            }
+            catch (Exception e)
+            {
+                throw e;
+            }
+        }
 
         public async void Scan()
         {
+            isScanning = true;
+            await GetQuota();
             try
             {
                 foreach (var item in List)
                 {
-                    if (item.LastDate != DateTime.Now.Date || item.IsDirty)
-                    {
-
-                        ObservableCollection<OHLCBar> bars = KLines[item.Security];
-                        // request history data
-                        client.RequestHistoryData(item.Security, DateTime.Now.AddDays(-5), DateTime.Now, QotCommon.KLType.KLType_Day);
-                        // request latest KLines
-                        List<QotCommon.KLine> kLines = await client.GetKL(item.Security, FTUtil.IntToKLType(Interval));
-                        var quote = List.FirstOrDefault(x => item.Security == x.Security);                       
-                        foreach (var line in kLines)
-                        {                            
-                            DateTime time = DateTime.ParseExact(line.Time, dtFormat, CultureInfo.InvariantCulture);
-                            if (time > GetBarTime(DateTime.Now))
-                                break;
-
-                            if (time.Date == DateTime.Now.Date)
-                            {
-                                bars.Add(new OHLCBar
-                                {
-                                    Security = item.Security,
-                                    Open = line.OpenPrice,
-                                    High = line.HighPrice,
-                                    Low = line.LowPrice,
-                                    Close = line.ClosePrice,
-                                    Volume = line.Volume,
-                                    Time = GetBarTime(time)
-                                });
-                                if (quote.DayHigh < line.HighPrice)
-                                    quote.DayHigh = line.HighPrice;
-                            }
-                            
-                        }
-                        //client.RequestMarketData(item.Security, FTUtil.IntToSubType(Interval));
-                        //client.RequestMarketData(item.Security, QotCommon.SubType.SubType_Ticker);
-                    }
+                    await Scan(item);
                 }
             }
             catch (Exception e)
@@ -785,6 +910,76 @@ namespace FutuScanner
                 GlobalExceptionHandler.HandleException(this, e, null);
             }
             
+        }
+
+        public void ReadSettings()
+        {
+            UserPreference = JsonConvert.DeserializeObject<UserPreference>(Properties.Settings.Default["preference"].ToString());
+            List<IController> all_ctrls = new List<IController>();
+            if (UserPreference != null)
+            {
+                Type t = typeof(VM);
+                string ns = t.Namespace;
+                foreach (string vendor in UserPreference.Vendors)
+                {
+                    AccountOption accOpt = (dynamic)UserPreference.GetType().GetProperty(vendor + "Account").GetValue(UserPreference);
+                    foreach (var acc in accOpt.Accounts)
+                    {
+                        if (acc.IsActivate)
+                        {
+                            string clsName = ns + "." + vendor + "Controller";
+                            Type type = Type.GetType(clsName);
+                            IController ctrl = Activator.CreateInstance(type, this) as IController;
+                            ctrl.ConnParam = acc;
+                            // if some connection is connected, then remain unchanged
+                            IController ic = Controllers.FirstOrDefault(x => x.DisplayName == ctrl.DisplayName);
+                            if (ic != null)
+                            {
+                                ic.ConnParam = acc;
+                                all_ctrls.Add(ic);
+                            }
+                            else
+                            {
+                                all_ctrls.Add(ctrl);
+                            }
+                        }
+                    }
+                    // add new controllers
+                    foreach (var ctrl in all_ctrls)
+                    {
+                        IController ic = Controllers.FirstOrDefault(x => x.DisplayName == ctrl.DisplayName);
+                        if (ic == null)
+                        {
+                            Controllers.Add(ctrl);
+                            ctrl.Connected += Ctrl_Connected;
+                            ctrl.Disconnected += Ctrl_Disconnected;
+                        }
+                    }
+
+
+                }
+            }
+
+        }
+
+        private void Ctrl_Disconnected(object sender, DisconnectedEventArgs e)
+        {
+            
+        }
+
+        private void Ctrl_Connected(object sender, ConnectedEventArgs e)
+        {
+            Request_all_symbols(e.Controller.Client);
+            e.Controller.Client.QotCallback.RequestHistoryKL += QotCallback_RequestHistoryKL;
+            e.Controller.Client.QotCallback.UpdateKL += QotCallback_UpdateKL;
+        }
+
+        public void AddSymbol()
+        {
+            Quote quote = new Quote() { Code = SelectedSymbol.Code, Name = SelectedSymbol.Name, Security = SelectedSymbol.Security };
+            List.Insert(0, quote);
+            if (isScanning)
+                Scan(quote);
         }
 
         public void ReadWatchListFromFile(string path)
@@ -810,6 +1005,11 @@ namespace FutuScanner
                     }                    
                 }
             }
+        }
+
+        public void ClearList()
+        {
+            List.Clear();
         }
 
         public void saveWList(string path)
